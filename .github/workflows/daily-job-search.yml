@@ -3,7 +3,13 @@ name: Frontend Job Search
 # بيشغّل البوت مرتين يوميًا ويبعت الوظائف الجديدة على Telegram.
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    # 11:00 AM بتوقيت مصر = 08:00 UTC
+    - cron: "0 8 * * *"
+
+    # 7:00 PM بتوقيت مصر = 16:00 UTC
+    - cron: "0 16 * * *"
+
+  # بيخليك تشغّله بإيدك من تاب Actions للتجربة.
   workflow_dispatch:
 
 jobs:

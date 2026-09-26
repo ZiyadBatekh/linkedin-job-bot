@@ -1,9 +1,10 @@
 name: Frontend Job Search
 
+# بيشغّل البوت مرتين يوميًا ويبعت الوظائف الجديدة على Telegram.
 on:
+ on:
   schedule:
-    - cron: "0 8 * * *"
-    - cron: "0 16 * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -12,18 +13,23 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      # بيجيب الكود من الريبو
       - name: Check out the repo
         uses: actions/checkout@v4
 
+      # بيسطّب بايثون
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
 
+      # بيسطّب المكتبات
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # ملف seen_jobs.json هو ذاكرة البوت بالوظايف اللي بعتها قبل كده.
+      # الكاش بينقله بين التشغيلات عشان مايجيلكش تكرار.
       - name: Restore seen-jobs memory
         uses: actions/cache@v4
         with:
@@ -32,6 +38,7 @@ jobs:
           restore-keys: |
             seen-jobs-
 
+      # بيشغّل البوت
       - name: Run the job search
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}

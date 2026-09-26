@@ -163,30 +163,19 @@ LINKEDIN_SEARCHES = [
 
 ]
 
-# بحث في شركات معيّنة — بيجيب أي وظيفة مفتوحة في الشركات دي، وبعدين
-# بيفلترها حسب علاقتها بمهاراتك.
-COMPANY_SEARCHES = [
-    {"keywords": "Bayzat",    "location": "United Arab Emirates"},
-    {"keywords": "Careem",    "location": "United Arab Emirates"},
-    {"keywords": "G42",       "location": "United Arab Emirates"},
-    {"keywords": "Talabat",   "location": "United Arab Emirates"},
-    {"keywords": "Halan",     "location": "Egypt"},
-    {"keywords": "Paymob",    "location": "Egypt"},
-    {"keywords": "Instabug",  "location": "Egypt"},
-    {"keywords": "Tamara",    "location": "Saudi Arabia"},
-    {"keywords": "maids.cc",  "location": "United Arab Emirates"},
-    {"keywords": "Qureos",    "location": "United Arab Emirates"},
-]
+# تم إيقاف Target Company Searches.
+# البوت يركز فقط على وظائف Frontend / Angular / React.
+COMPANY_SEARCHES = []
 
 # الوظيفة اللي بتيجي من بحث الشركات لازم يكون في عنوانها كلمة على الأقل من
 # دول عشان تتحسب مناسبة. ضيف الكلمات بتاعة مجالك إنت هنا.
-COMPANY_RELEVANCE_TITLE_WORDS = {
-    "automation", "ai", "agentic", "rpa", "analyst", "developer",
-    "engineer", "operations", "product", "data", "digital", "technical",
-    "software", "platform", "workflow", "process", "integration",
-    "solution", "consultant", "api", "system", "no-code", "low-code",
-    "marketing", "social", "n8n", "claude", "codex",
-}
+# COMPANY_RELEVANCE_TITLE_WORDS = {
+#     "automation", "ai", "agentic", "rpa", "analyst", "developer",
+#     "engineer", "operations", "product", "data", "digital", "technical",
+#     "software", "platform", "workflow", "process", "integration",
+#     "solution", "consultant", "api", "system", "no-code", "low-code",
+#     "marketing", "social", "n8n", "claude", "codex",
+# }
 
 LINKEDIN_HEADERS = {
     "User-Agent": (
@@ -237,6 +226,99 @@ SKILL_SCORES = {
     "rest api": 7,
     "rest": 6,
 }
+
+# ── فلترة وظائف Frontend فقط ──────────────────────────────────────────────────
+
+ALLOWED_ROLE_PATTERNS = [
+    r"\bfrontend developer\b",
+    r"\bfront[- ]end developer\b",
+    r"\bfrontend engineer\b",
+    r"\bfront[- ]end engineer\b",
+
+    r"\bangular developer\b",
+    r"\bangular engineer\b",
+
+    r"\breact developer\b",
+    r"\breact engineer\b",
+
+    r"\bnext\.?js developer\b",
+    r"\bnext\.?js engineer\b",
+
+    r"\breact native developer\b",
+    r"\breact native engineer\b",
+]
+
+# أدوار لا نريدها حتى لو كان فيها Angular / React
+EXCLUDED_ROLE_PATTERNS = [
+    r"\bsolution architect\b",
+    r"\bsoftware architect\b",
+    r"\benterprise architect\b",
+    r"\btechnical architect\b",
+    r"\bcloud architect\b",
+
+    r"\bdata engineer\b",
+    r"\bdata scientist\b",
+    r"\bmachine learning\b",
+    r"\bai engineer\b",
+    r"\bdevops\b",
+    r"\bbackend\b",
+    r"\bback[- ]end\b",
+
+    r"\bproduct manager\b",
+    r"\bproduct marketing\b",
+    r"\bproject manager\b",
+
+    r"\bqa\b",
+    r"\bquality assurance\b",
+    r"\btechnical support\b",
+    r"\bsolution consultant\b",
+]
+
+
+def is_frontend_role(title: str) -> bool:
+    """يسمح فقط بعناوين وظائف Frontend / Angular / React المناسبة."""
+
+    title = (title or "").strip().lower()
+
+    if not title:
+        return False
+
+    # استبعاد الأدوار غير المطلوبة أولاً
+    for pattern in EXCLUDED_ROLE_PATTERNS:
+        if re.search(pattern, title, re.I):
+            return False
+
+    # لازم العنوان نفسه يكون Frontend / Angular / React
+    for pattern in ALLOWED_ROLE_PATTERNS:
+        if re.search(pattern, title, re.I):
+            return True
+
+    return False
+
+
+def is_remote_job(job: dict) -> bool:
+    """
+    LinkedIn search نفسها تستخدم f_WT=2 للـ Remote.
+    هنا نضيف طبقة حماية تستبعد أي نتيجة ظاهر فيها Hybrid / On-site.
+    """
+
+    title = (job.get("job_title") or "").lower()
+    location = (job.get("job_city") or "").lower()
+
+    combined = f"{title} {location}"
+
+    forbidden_remote_modes = [
+        "on-site",
+        "onsite",
+        "on site",
+        "office based",
+        "office-based",
+    ]
+
+    if any(mode in combined for mode in forbidden_remote_modes):
+        return False
+
+    return bool(job.get("job_is_remote", False))
 
 LOCATION_SCORES = {
     # شمال أوروبا — الأولوية الأولى، بنقط أعلى من أي منطقة تانية
@@ -410,29 +492,41 @@ def parse_card(card, search_location: str) -> dict | None:
     company  = (company_tag.get_text(strip=True) if company_tag else "").strip()
     location = (loc_tag.get_text(strip=True)     if loc_tag     else search_location).strip()
 
-    # كل سيرش بيفرض f_WT=2 (ريموت)، يعني النتايج ريموت بطبيعتها؛
-    # فحص النص متسيب بس كإشارة على الهايبرد.
-    is_remote = True
+    # LinkedIn search تستخدم f_WT=2 للوظائف Remote.
+# نحتفظ بها True، لكن نرفض النتائج التي يظهر فيها Hybrid / On-site.
+is_remote = True
 
-    return {
-        "job_id":        job_id,
-        "job_title":     title,
-        "employer_name": company,
-        "job_city":      location,
-        "job_country":   search_location,
-        "_search_country": infer_country_code(search_location),
-        "job_is_remote": is_remote,
-        "job_apply_link": apply_url,
-        "job_description": "",
-        "apply_options": [{"apply_link": apply_url, "is_direct": False, "publisher": "LinkedIn"}],
-    }
+job = {
+    "job_id":        job_id,
+    "job_title":     title,
+    "employer_name": company,
+    "job_city":      location,
+    "job_country":   search_location,
+    "_search_country": infer_country_code(search_location),
+    "job_is_remote": is_remote,
+    "job_apply_link": apply_url,
+    "job_description": "",
+    "apply_options": [
+        {
+            "apply_link": apply_url,
+            "is_direct": False,
+            "publisher": "LinkedIn"
+        }
+    ],
+}
+
+# حماية إضافية ضد Hybrid / On-site
+if not is_remote_job(job):
+    return None
+
+return job
 
 
 def search_linkedin(keywords: str, location: str, remote_only: bool = False) -> list:
     url = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
     params = {
         "keywords": keywords,
-        "f_TPR":    "r86400",  # last 3 days
+        "f_TPR":    "r86400",  # last 24 hours
         "start":    0,
         "f_WT":     "2",  # remote-work-type only — every search is remote-only now
     }
@@ -560,21 +654,42 @@ def main():
     seen = load_seen_jobs()
     this_run_ids: set = set()
     general_jobs: list = []
-    company_jobs: list = []
 
     # ── الجولة ١: البحث العام عن الوظايف ──────────────────────────────────────
     print("--- General searches ---")
-    for s in LINKEDIN_SEARCHES:
-        jobs = search_linkedin(s["keywords"], s["location"], s.get("remote_only", False))
-        kept = 0
-        for job in jobs:
-            job_id = job.get("job_id")
-            if not job_id or job_id in seen or job_id in this_run_ids:
-                continue
-            this_run_ids.add(job_id)
-            general_jobs.append(job)
-            kept += 1
-        print(f"  '{s['keywords']}' / {s['location']} -> {kept} new")
+   for s in LINKEDIN_SEARCHES:
+    jobs = search_linkedin(
+        s["keywords"],
+        s["location"],
+        s.get("remote_only", False)
+    )
+
+    kept = 0
+
+    for job in jobs:
+        job_id = job.get("job_id")
+        title = job.get("job_title") or ""
+
+        # 1. منع التكرار
+        if not job_id or job_id in seen or job_id in this_run_ids:
+            continue
+
+        # 2. لازم تكون الوظيفة Frontend / Angular / React
+        if not is_frontend_role(title):
+            continue
+
+        # 3. لازم تكون Remote
+        if not is_remote_job(job):
+            continue
+
+        this_run_ids.add(job_id)
+        general_jobs.append(job)
+        kept += 1
+
+    print(
+        f"  '{s['keywords']}' / {s['location']} -> "
+        f"{kept} new relevant remote jobs"
+    )
 
     # ── الجولة ٢: البحث في الشركات المستهدفة ──────────────────────────────────
     print("--- Target company searches ---")
@@ -595,9 +710,9 @@ def main():
             kept += 1
         print(f"  '{s['keywords']}' / {s['location']} -> {kept} relevant")
 
-    print(f"General: {len(general_jobs)} | Company: {len(company_jobs)}")
+ print(f"Relevant remote frontend jobs: {len(general_jobs)}")
 
-    all_new = general_jobs + company_jobs
+all_new = general_jobs
     if not all_new:
         send_telegram(
             "<b>Daily Job Report - " + datetime.now().strftime("%b %d, %Y") + "</b>\n"
@@ -606,16 +721,15 @@ def main():
     else:
         # بيجيب عدد المتقدمين لأعلى وظايف كل مجموعة (بونص المنافسة
         # القليلة)، بيعيد الترتيب، وبعدين بياخد أحسن ٥ من كل مجموعة.
-        general_jobs = enrich_with_competition(general_jobs)
-        company_jobs = enrich_with_competition(company_jobs)
-        top_general  = general_jobs[:5]
-        top_company  = company_jobs[:5]
+       general_jobs = enrich_with_competition(general_jobs)
+
+top_general = general_jobs[:10]
 
         date_str = datetime.now().strftime("%b %d, %Y")
-        lines = [
-            f"<b>Daily Job Report - {date_str}</b>\n"
-            f"Remote only | North Europe + Gulf + Egypt + Europe | LinkedIn only\n"
-        ]
+      lines = [
+    f"<b>Frontend Job Report - {date_str}</b>\n"
+    f"Remote only | Angular + React + Frontend | LinkedIn only\n"
+]
 
         if top_general:
             lines.append("<b>-- Best Role Matches --</b>")
@@ -624,15 +738,15 @@ def main():
                 lines.append(format_job(i, job))
                 lines.append("")
 
-        if top_company:
-            lines.append("<b>-- Target Company Openings --</b>")
-            lines.append("")
-            for i, job in enumerate(top_company, 1):
-                lines.append(format_job(i, job))
-                lines.append("")
+        # if top_company:
+        #     lines.append("<b>-- Target Company Openings --</b>")
+        #     lines.append("")
+        #     for i, job in enumerate(top_company, 1):
+        #         lines.append(format_job(i, job))
+        #         lines.append("")
 
         send_telegram("\n".join(lines))
-        print(f"Telegram sent: {len(top_general)} role matches + {len(top_company)} company matches.")
+      print(f"Telegram sent: {len(top_general)} frontend matches.")
 
     now_iso = datetime.now().isoformat()
     for job_id in this_run_ids:

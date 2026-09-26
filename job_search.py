@@ -21,50 +21,146 @@ TOP_N = 10
 # في المناطق المستهدفة: شمال أوروبا (الأولوية الأولى)، الخليج، مصر، وباقي
 # أوروبا. غيّر القايمة دي حسب البلاد اللي إنت عايز تشتغل فيها.
 LINKEDIN_SEARCHES = [
-    # شمال أوروبا — الأولوية الأولى
-    {"keywords": "AI automation",             "location": "Switzerland"},
-    {"keywords": "AI automation specialist",  "location": "Switzerland"},
-    {"keywords": "AI automation",             "location": "Denmark"},
-    {"keywords": "AI automation",             "location": "Finland"},
-    {"keywords": "AI automation",             "location": "Sweden"},
-    {"keywords": "AI automation",             "location": "Norway"},
-    {"keywords": "n8n automation",            "location": "Switzerland"},
-    {"keywords": "AI business analyst",       "location": "Sweden"},
-    # الخليج
-    {"keywords": "AI automation specialist",  "location": "United Arab Emirates"},
-    {"keywords": "AI agentic developer",      "location": "United Arab Emirates"},
-    {"keywords": "RPA developer no-code",     "location": "United Arab Emirates"},
-    {"keywords": "AI automation",             "location": "Saudi Arabia"},
-    {"keywords": "business analyst AI",       "location": "Saudi Arabia"},
-    {"keywords": "AI business analyst",       "location": "United Arab Emirates"},
-    {"keywords": "AI marketing automation",   "location": "United Arab Emirates"},
-    {"keywords": "AI operations",             "location": "United Arab Emirates"},
-    {"keywords": "n8n automation",            "location": "United Arab Emirates"},
-    {"keywords": "Claude AI automation",      "location": "United Arab Emirates"},
-    {"keywords": "AI automation",             "location": "Qatar"},
-    {"keywords": "AI automation",             "location": "Kuwait"},
-    {"keywords": "AI automation",             "location": "Bahrain"},
-    {"keywords": "AI automation",             "location": "Oman"},
-    # مصر
-    {"keywords": "AI automation developer",   "location": "Egypt"},
-    {"keywords": "AI business analyst",       "location": "Egypt"},
-    {"keywords": "AI automation",             "location": "Egypt"},
-    # باقي أوروبا
-    {"keywords": "AI automation",             "location": "United Kingdom"},
-    {"keywords": "AI automation",             "location": "Ireland"},
-    {"keywords": "AI automation",             "location": "Germany"},
-    {"keywords": "AI automation",             "location": "France"},
-    {"keywords": "AI automation",             "location": "Netherlands"},
-    {"keywords": "AI automation",             "location": "Spain"},
-    {"keywords": "AI automation",             "location": "Portugal"},
-    {"keywords": "AI automation",             "location": "Italy"},
-    {"keywords": "AI automation",             "location": "Poland"},
-    {"keywords": "AI automation",             "location": "Belgium"},
-    # لفّة أخيرة على الريموت عالمياً — من غير فلتر بلد، ريموت بس
-    {"keywords": "AI automation",             "location": "Worldwide", "remote_only": True},
-    {"keywords": "AI automation specialist",  "location": "Worldwide", "remote_only": True},
-    {"keywords": "n8n automation",            "location": "Worldwide", "remote_only": True},
-    {"keywords": "AI business analyst",       "location": "Worldwide", "remote_only": True},
+
+    # =========================================================
+    # الخليج — الأولوية الأولى
+    # =========================================================
+
+    # UAE
+    {"keywords": "Frontend Developer",       "location": "United Arab Emirates"},
+    {"keywords": "Angular Developer",        "location": "United Arab Emirates"},
+    {"keywords": "Frontend Engineer",        "location": "United Arab Emirates"},
+    {"keywords": "React Developer",          "location": "United Arab Emirates"},
+    {"keywords": "Angular Engineer",          "location": "United Arab Emirates"},
+
+    # Saudi Arabia
+    {"keywords": "Frontend Developer",       "location": "Saudi Arabia"},
+    {"keywords": "Angular Developer",        "location": "Saudi Arabia"},
+    {"keywords": "Frontend Engineer",        "location": "Saudi Arabia"},
+    {"keywords": "React Developer",          "location": "Saudi Arabia"},
+    {"keywords": "Angular Engineer",          "location": "Saudi Arabia"},
+
+    # Qatar
+    {"keywords": "Frontend Developer",       "location": "Qatar"},
+    {"keywords": "Angular Developer",        "location": "Qatar"},
+    {"keywords": "Frontend Engineer",        "location": "Qatar"},
+    {"keywords": "React Developer",          "location": "Qatar"},
+
+    # Kuwait
+    {"keywords": "Frontend Developer",       "location": "Kuwait"},
+    {"keywords": "Angular Developer",        "location": "Kuwait"},
+    {"keywords": "Frontend Engineer",        "location": "Kuwait"},
+
+    # Bahrain
+    {"keywords": "Frontend Developer",       "location": "Bahrain"},
+    {"keywords": "Angular Developer",        "location": "Bahrain"},
+    {"keywords": "Frontend Engineer",        "location": "Bahrain"},
+
+    # Oman
+    {"keywords": "Frontend Developer",       "location": "Oman"},
+    {"keywords": "Angular Developer",        "location": "Oman"},
+    {"keywords": "Frontend Engineer",        "location": "Oman"},
+
+
+    # =========================================================
+    # مصر — الأولوية الثانية
+    # =========================================================
+
+    {"keywords": "Frontend Developer",       "location": "Egypt"},
+    {"keywords": "Angular Developer",        "location": "Egypt"},
+    {"keywords": "Frontend Engineer",        "location": "Egypt"},
+    {"keywords": "Angular Engineer",          "location": "Egypt"},
+    {"keywords": "React Developer",          "location": "Egypt"},
+    {"keywords": "React Engineer",            "location": "Egypt"},
+    {"keywords": "Next.js Developer",        "location": "Egypt"},
+    {"keywords": "React Native Developer",   "location": "Egypt"},
+
+
+    # =========================================================
+    # أوروبا — الأولوية الثالثة
+    # =========================================================
+
+    # United Kingdom
+    {"keywords": "Frontend Developer",       "location": "United Kingdom"},
+    {"keywords": "Angular Developer",        "location": "United Kingdom"},
+    {"keywords": "Frontend Engineer",        "location": "United Kingdom"},
+    {"keywords": "React Developer",          "location": "United Kingdom"},
+
+    # Ireland
+    {"keywords": "Frontend Developer",       "location": "Ireland"},
+    {"keywords": "Angular Developer",        "location": "Ireland"},
+    {"keywords": "Frontend Engineer",        "location": "Ireland"},
+
+    # Germany
+    {"keywords": "Frontend Developer",       "location": "Germany"},
+    {"keywords": "Angular Developer",        "location": "Germany"},
+    {"keywords": "Frontend Engineer",        "location": "Germany"},
+    {"keywords": "React Developer",          "location": "Germany"},
+
+    # Netherlands
+    {"keywords": "Frontend Developer",       "location": "Netherlands"},
+    {"keywords": "Angular Developer",        "location": "Netherlands"},
+    {"keywords": "Frontend Engineer",        "location": "Netherlands"},
+
+    # Sweden
+    {"keywords": "Frontend Developer",       "location": "Sweden"},
+    {"keywords": "Angular Developer",        "location": "Sweden"},
+    {"keywords": "Frontend Engineer",        "location": "Sweden"},
+
+    # Denmark
+    {"keywords": "Frontend Developer",       "location": "Denmark"},
+    {"keywords": "Angular Developer",        "location": "Denmark"},
+    {"keywords": "Frontend Engineer",        "location": "Denmark"},
+
+    # Finland
+    {"keywords": "Frontend Developer",       "location": "Finland"},
+    {"keywords": "Angular Developer",        "location": "Finland"},
+    {"keywords": "Frontend Engineer",        "location": "Finland"},
+
+    # Norway
+    {"keywords": "Frontend Developer",       "location": "Norway"},
+    {"keywords": "Angular Developer",        "location": "Norway"},
+    {"keywords": "Frontend Engineer",        "location": "Norway"},
+
+    # France
+    {"keywords": "Frontend Developer",       "location": "France"},
+    {"keywords": "Angular Developer",        "location": "France"},
+    {"keywords": "Frontend Engineer",        "location": "France"},
+
+    # Spain
+    {"keywords": "Frontend Developer",       "location": "Spain"},
+    {"keywords": "Angular Developer",        "location": "Spain"},
+    {"keywords": "Frontend Engineer",        "location": "Spain"},
+
+    # Italy
+    {"keywords": "Frontend Developer",       "location": "Italy"},
+    {"keywords": "Angular Developer",        "location": "Italy"},
+    {"keywords": "Frontend Engineer",        "location": "Italy"},
+
+    # Poland
+    {"keywords": "Frontend Developer",       "location": "Poland"},
+    {"keywords": "Angular Developer",        "location": "Poland"},
+    {"keywords": "Frontend Engineer",        "location": "Poland"},
+
+    # Belgium
+    {"keywords": "Frontend Developer",       "location": "Belgium"},
+    {"keywords": "Angular Developer",        "location": "Belgium"},
+    {"keywords": "Frontend Engineer",        "location": "Belgium"},
+
+
+    # =========================================================
+    # Worldwide Remote — الأولوية الأخيرة
+    # =========================================================
+
+    {"keywords": "Frontend Developer",       "location": "Worldwide", "remote_only": True},
+    {"keywords": "Angular Developer",        "location": "Worldwide", "remote_only": True},
+    {"keywords": "Frontend Engineer",        "location": "Worldwide", "remote_only": True},
+    {"keywords": "Angular Engineer",          "location": "Worldwide", "remote_only": True},
+    {"keywords": "React Developer",          "location": "Worldwide", "remote_only": True},
+    {"keywords": "React Engineer",            "location": "Worldwide", "remote_only": True},
+    {"keywords": "Next.js Developer",        "location": "Worldwide", "remote_only": True},
+    {"keywords": "React Native Developer",   "location": "Worldwide", "remote_only": True},
+
 ]
 
 # بحث في شركات معيّنة — بيجيب أي وظيفة مفتوحة في الشركات دي، وبعدين
@@ -105,43 +201,41 @@ LINKEDIN_HEADERS = {
 # ── حساب النقط ────────────────────────────────────────────────────────────────
 
 ROLE_SCORES = {
-    # أول عنصر هو الوظيفة رقم ١ في الأولوية — دالة score_job() بتاخد أول
-    # تطابق في العنوان، يعني الترتيب مهم. حط الوظيفة اللي بتحلم بيها الأول
-    # وبأعلى رقم، وخلّي الوظايف القريبة منها عالية بس تحتها.
-    "ai automation":         40,
-    "ai automation & business analyst": 38,
-    "ai business analyst":   30,
-    "ai marketing automation": 28,
-    "marketing automation":  24,
-    "ai ba":                 26,
-    "ai operations":         24,
-    "automation specialist": 25,
-    "workflow automation":   22,
-    "ai agentic":            25,
-    "agentic developer":     25,
-    "agentic engineer":      25,
-    "rpa developer":         20,
-    "rpa engineer":          20,
-    "robotic process":       18,
-    "no-code":               18,
-    "low-code":              18,
-    "automation consultant": 20,
-    "operations analyst":    18,
-    "business analyst":      18,
-    "ai product analyst":    18,
-    "automation engineer":   20,
-    "automation developer":  20,
-    "process automation":    18,
+    "angular developer": 50,
+    "frontend developer": 48,
+    "front end developer": 48,
+    "frontend engineer": 46,
+    "angular engineer": 46,
+    "react developer": 44,
+    "react engineer": 42,
+    "next.js developer": 40,
+    "nextjs developer": 40,
+    "react native developer": 36,
+
+    "junior frontend developer": 30,
+    "junior front end developer": 30,
+    "mid-level frontend developer": 38,
+    "mid level frontend developer": 38,
+
+    
+    "web developer": 25,
 }
 
 SKILL_SCORES = {
-    "ai automation": 20, "n8n":     22, "make.com":  18, "integromat": 15,
-    "zapier":       12, "claude":    16, "anthropic":  14,
-    "codex":        14, "airtable":  10, "supabase":   10,
-    "whatsapp":      8, "chatbot":    8, "llm":         8,
-    "gpt":           6, "openai":     6, "python":      6,
-    "automation":   10, "workflow":   4, "ai agent":   10,
-    "ai ops":       12,
+    "angular": 25,
+    "typescript": 20,
+    "react": 18,
+    "next.js": 17,
+    "nextjs": 17,
+    "javascript": 15,
+    "react native": 14,
+    "rxjs": 12,
+    "ngrx": 10,
+    "html": 8,
+    "css": 8,
+    "tailwind": 7,
+    "rest api": 7,
+    "rest": 6,
 }
 
 LOCATION_SCORES = {
@@ -338,7 +432,7 @@ def search_linkedin(keywords: str, location: str, remote_only: bool = False) -> 
     url = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
     params = {
         "keywords": keywords,
-        "f_TPR":    "r259200",  # last 3 days
+        "f_TPR":    "r86400",  # last 3 days
         "start":    0,
         "f_WT":     "2",  # remote-work-type only — every search is remote-only now
     }

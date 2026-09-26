@@ -526,7 +526,7 @@ def search_linkedin(keywords: str, location: str, remote_only: bool = False) -> 
     url = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
     params = {
         "keywords": keywords,
-        "f_TPR":    "r86400",  # last 24 hours
+        "f_TPR":    "r86400",  # last 24h
         "start":    0,
         "f_WT":     "2",  # remote-work-type only — every search is remote-only now
     }

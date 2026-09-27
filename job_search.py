@@ -493,33 +493,33 @@ def parse_card(card, search_location: str) -> dict | None:
     location = (loc_tag.get_text(strip=True)     if loc_tag     else search_location).strip()
 
     # LinkedIn search تستخدم f_WT=2 للوظائف Remote.
-# نحتفظ بها True، لكن نرفض النتائج التي يظهر فيها Hybrid / On-site.
-is_remote = True
+    # نحتفظ بها True، لكن نرفض النتائج التي يظهر فيها Hybrid / On-site.
+    is_remote = True
 
-job = {
-    "job_id":        job_id,
-    "job_title":     title,
-    "employer_name": company,
-    "job_city":      location,
-    "job_country":   search_location,
-    "_search_country": infer_country_code(search_location),
-    "job_is_remote": is_remote,
-    "job_apply_link": apply_url,
-    "job_description": "",
-    "apply_options": [
-        {
-            "apply_link": apply_url,
-            "is_direct": False,
-            "publisher": "LinkedIn"
-        }
-    ],
-}
+    job = {
+        "job_id":        job_id,
+        "job_title":     title,
+        "employer_name": company,
+        "job_city":      location,
+        "job_country":   search_location,
+        "_search_country": infer_country_code(search_location),
+        "job_is_remote": is_remote,
+        "job_apply_link": apply_url,
+        "job_description": "",
+        "apply_options": [
+            {
+                "apply_link": apply_url,
+                "is_direct": False,
+                "publisher": "LinkedIn"
+            }
+        ],
+    }
 
-# حماية إضافية ضد Hybrid / On-site
-if not is_remote_job(job):
-    return None
+    # حماية إضافية ضد Hybrid / On-site
+    if not is_remote_job(job):
+        return None
 
-return job
+    return job
 
 
 def search_linkedin(keywords: str, location: str, remote_only: bool = False) -> list:
@@ -619,6 +619,8 @@ def send_telegram(text: str):
             resp.raise_for_status()
         except requests.RequestException as e:
             print(f"Error sending Telegram message: {e}")
+            return False
+    return True
 
 
 # ── حفظ الذاكرة ───────────────────────────────────────────────────────────────
@@ -657,39 +659,20 @@ def main():
 
     # ── الجولة ١: البحث العام عن الوظايف ──────────────────────────────────────
     print("--- General searches ---")
-   for s in LINKEDIN_SEARCHES:
-    jobs = search_linkedin(
-        s["keywords"],
-        s["location"],
-        s.get("remote_only", False)
-    )
-
-    kept = 0
-
-    for job in jobs:
-        job_id = job.get("job_id")
-        title = job.get("job_title") or ""
-
-        # 1. منع التكرار
-        if not job_id or job_id in seen or job_id in this_run_ids:
-            continue
-
-        # 2. لازم تكون الوظيفة Frontend / Angular / React
-        if not is_frontend_role(title):
-            continue
-
-        # 3. لازم تكون Remote
-        if not is_remote_job(job):
-            continue
-
-        this_run_ids.add(job_id)
-        general_jobs.append(job)
-        kept += 1
-
-    print(
-        f"  '{s['keywords']}' / {s['location']} -> "
-        f"{kept} new relevant remote jobs"
-    )
+    for s in LINKEDIN_SEARCHES:
+        jobs = search_linkedin(s["keywords"], s["location"], s.get("remote_only", False))
+        kept = 0
+        for job in jobs:
+            job_id = job.get("job_id")
+            title = job.get("job_title") or ""
+            if not job_id or job_id in seen or job_id in this_run_ids:
+                continue
+            if not is_frontend_role(title) or not is_remote_job(job):
+                continue
+            this_run_ids.add(job_id)
+            general_jobs.append(job)
+            kept += 1
+        print(f"  '{s['keywords']}' / {s['location']} -> {kept} new relevant remote jobs")
 
     # ── الجولة ٢: البحث في الشركات المستهدفة ──────────────────────────────────
     print("--- Target company searches ---")
@@ -706,30 +689,29 @@ def main():
                 continue
             job["_company_match"] = True
             this_run_ids.add(job_id)
-            company_jobs.append(job)
             kept += 1
         print(f"  '{s['keywords']}' / {s['location']} -> {kept} relevant")
 
- print(f"Relevant remote frontend jobs: {len(general_jobs)}")
+    print(f"Relevant remote frontend jobs: {len(general_jobs)}")
 
-all_new = general_jobs
+    all_new = general_jobs
     if not all_new:
-        send_telegram(
+        sent = send_telegram(
             "<b>Daily Job Report - " + datetime.now().strftime("%b %d, %Y") + "</b>\n"
             "No new LinkedIn jobs since last run. Check back tomorrow!"
         )
+        if not sent:
+            raise RuntimeError("Telegram message could not be sent; jobs were not marked as seen")
     else:
         # بيجيب عدد المتقدمين لأعلى وظايف كل مجموعة (بونص المنافسة
         # القليلة)، بيعيد الترتيب، وبعدين بياخد أحسن ٥ من كل مجموعة.
-       general_jobs = enrich_with_competition(general_jobs)
-
-top_general = general_jobs[:10]
-
+        general_jobs = enrich_with_competition(general_jobs)
+        top_general = general_jobs[:TOP_N]
         date_str = datetime.now().strftime("%b %d, %Y")
-      lines = [
-    f"<b>Frontend Job Report - {date_str}</b>\n"
-    f"Remote only | Angular + React + Frontend | LinkedIn only\n"
-]
+        lines = [
+            f"<b>Frontend Job Report - {date_str}</b>\n"
+            "Remote only | Angular + React + Frontend | LinkedIn only\n"
+        ]
 
         if top_general:
             lines.append("<b>-- Best Role Matches --</b>")
@@ -745,11 +727,15 @@ top_general = general_jobs[:10]
         #         lines.append(format_job(i, job))
         #         lines.append("")
 
-        send_telegram("\n".join(lines))
-      print(f"Telegram sent: {len(top_general)} frontend matches.")
+        if not send_telegram("\n".join(lines)):
+            raise RuntimeError("Telegram message could not be sent; jobs were not marked as seen")
+        print(f"Telegram sent: {len(top_general)} frontend matches.")
 
     now_iso = datetime.now().isoformat()
-    for job_id in this_run_ids:
+    ids_to_mark = this_run_ids if not all_new else {
+        job.get("job_id") for job in top_general if job.get("job_id")
+    }
+    for job_id in ids_to_mark:
         seen[job_id] = now_iso
     save_seen_jobs(seen)
 

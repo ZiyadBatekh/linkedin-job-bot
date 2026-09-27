@@ -3,19 +3,24 @@ name: Frontend Job Search
 # بيشغّل البوت مرتين يوميًا ويبعت الوظائف الجديدة على Telegram.
 on:
   schedule:
-    # 11:00 AM بتوقيت مصر = 08:00 UTC
-    - cron: "0 8 * * *"
+    # GitHub cron is UTC. These are 08:07 and 20:07 UTC every day.
+    - cron: "7 8 * * *"
 
-    # 7:00 PM بتوقيت مصر = 16:00 UTC
-    - cron: "0 16 * * *"
+    - cron: "7 20 * * *"
 
   # بيخليك تشغّله بإيدك من تاب Actions للتجربة.
   workflow_dispatch:
+
+concurrency:
+  group: linkedin-job-search
+  cancel-in-progress: false
 
 jobs:
   search:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
 
     steps:
       # بيجيب الكود من الريبو
@@ -33,19 +38,21 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # ملف seen_jobs.json هو ذاكرة البوت بالوظايف اللي بعتها قبل كده.
-      # الكاش بينقله بين التشغيلات عشان مايجيلكش تكرار.
-      - name: Restore seen-jobs memory
-        uses: actions/cache@v4
-        with:
-          path: seen_jobs.json
-          key: seen-jobs-${{ github.run_id }}
-          restore-keys: |
-            seen-jobs-
-
       # بيشغّل البوت
       - name: Run the job search
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python job_search.py
+
+      - name: Persist sent-job memory
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add seen_jobs.json
+          if git diff --cached --quiet; then
+            echo "No seen-job database changes"
+          else
+            git commit -m "Update seen jobs database"
+            git push origin HEAD:main
+          fi

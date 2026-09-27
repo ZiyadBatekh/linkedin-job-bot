@@ -1,12 +1,14 @@
 name: Frontend Job Search
 
+run-name: Frontend Job Search (${{ github.event_name }})
+
 # بيشغّل البوت مرتين يوميًا ويبعت الوظائف الجديدة على Telegram.
 on:
   schedule:
-    # GitHub cron is UTC. These are 08:07 and 20:07 UTC every day.
-    - cron: "7 8 * * *"
+    # GitHub cron is UTC. These are 08:11 and 20:11 UTC every day.
+    - cron: "11 8 * * *"
 
-    - cron: "7 20 * * *"
+    - cron: "11 20 * * *"
 
   # بيخليك تشغّله بإيدك من تاب Actions للتجربة.
   workflow_dispatch:

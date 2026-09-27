@@ -163,6 +163,25 @@ LINKEDIN_SEARCHES = [
 
 ]
 
+# Restrict results to the requested countries. In particular, never query
+# LinkedIn's Worldwide location because it returns jobs from unrelated regions.
+ALLOWED_SEARCH_LOCATIONS = {
+    "Egypt", "United Arab Emirates", "Saudi Arabia", "Qatar", "Kuwait",
+    "Bahrain", "Oman", "United States", "United Kingdom", "Germany", "Belgium",
+}
+LINKEDIN_SEARCHES = [
+    search for search in LINKEDIN_SEARCHES
+    if search["location"] in ALLOWED_SEARCH_LOCATIONS
+]
+LINKEDIN_SEARCHES.extend(
+    {"keywords": keywords, "location": "United States"}
+    for keywords in (
+        "Frontend Developer", "Angular Developer", "Frontend Engineer",
+        "React Developer", "Angular Engineer", "React Engineer",
+        "Next.js Developer", "React Native Developer",
+    )
+)
+
 # تم إيقاف Target Company Searches.
 # البوت يركز فقط على وظائف Frontend / Angular / React.
 COMPANY_SEARCHES = []

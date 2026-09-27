@@ -2,8 +2,8 @@
 .env
 .env.local
 
-# Runtime state (per-machine, regenerated automatically)
-seen_jobs.json
+# Runtime state is intentionally committed by GitHub Actions so scheduled runs
+# share the list of jobs that were already sent.
 job-results.md
 
 # Python

@@ -612,22 +612,34 @@ def parse_external_card(card, source: str, location: str) -> dict | None:
 
 
 def search_wuzzuf(keywords: str, location: str) -> list:
-    if location != "Egypt":
-        return []
-    url = f"https://wuzzuf.net/search/jobs/?a=hpb&q={quote_plus(keywords)}"
-    try:
-        response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=15)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        cards = soup.select("article, .css-1gatmva, [data-testid='job-card']")
-        return [job for card in cards if (job := parse_external_card(card, "WUZZUF", location))]
-    except requests.RequestException as exc:
-        print(f"Warning: WUZZUF search failed for '{keywords}': {exc}")
-        return []
+    jobs, seen_links = [], set()
+    country_slug = location.replace(" ", "-")
+    for work_mode in ("remote", "hybrid"):
+        slug = quote_plus(f"{keywords} {work_mode}").replace("+", "-")
+        url = f"https://wuzzuf.net/a/{slug}-Jobs-in-{country_slug}"
+        try:
+            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=15)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+            cards = soup.select("article, [data-testid='job-card'], h2")
+            cards = [card.find_parent("article") or card for card in cards]
+            for card in cards:
+                job = parse_external_card(card, "WUZZUF", location)
+                if job and job["job_apply_link"] not in seen_links:
+                    seen_links.add(job["job_apply_link"])
+                    jobs.append(job)
+        except requests.RequestException as exc:
+            print(f"Warning: WUZZUF search failed for '{keywords}' / {work_mode}: {exc}")
+    return jobs
 
 
 def search_indeed(keywords: str, location: str) -> list:
-    url = f"https://www.indeed.com/jobs?q={quote_plus(keywords)}&l={quote_plus(location)}&fromage=1"
+    country_domains = {
+        "Egypt": "eg", "United Arab Emirates": "ae", "Saudi Arabia": "sa",
+        "Qatar": "qa", "Kuwait": "kw", "Bahrain": "bh", "Oman": "om",
+    }
+    domain = country_domains.get(location, "www")
+    url = f"https://{domain}.indeed.com/jobs?q={quote_plus(keywords)}&l={quote_plus(location)}&fromage=1"
     try:
         response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=15)
         response.raise_for_status()
@@ -800,7 +812,7 @@ def main():
     if not all_new:
         sent = send_telegram(
             "<b>Daily Job Report - " + datetime.now().strftime("%b %d, %Y") + "</b>\n"
-            "No new LinkedIn jobs since last run. Check back tomorrow!"
+            "No new jobs from LinkedIn, WUZZUF, or Indeed since last run. Check back tomorrow!"
         )
         if not sent:
             raise RuntimeError("Telegram message could not be sent; jobs were not marked as seen")

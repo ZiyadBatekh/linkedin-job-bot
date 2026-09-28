@@ -618,7 +618,7 @@ def search_wuzzuf(keywords: str, location: str) -> list:
         slug = quote_plus(f"{keywords} {work_mode}").replace("+", "-")
         url = f"https://wuzzuf.net/a/{slug}-Jobs-in-{country_slug}"
         try:
-            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=15)
+            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=8)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
             cards = soup.select("article, [data-testid='job-card'], h2")
@@ -648,7 +648,7 @@ def search_naukrigulf(keywords: str, location: str) -> list:
         slug = quote_plus(f"{keywords} {work_mode}").replace("+", "-")
         url = f"https://www.naukrigulf.com/{slug}-jobs-in-{location_slug}"
         try:
-            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=15)
+            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=8)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
             cards = soup.select("article, .jobTuple, .srpTuple, [class*='jobTuple']")
@@ -803,7 +803,14 @@ def main():
         print(f"  '{s['keywords']}' / {s['location']} -> {kept} relevant")
 
     external_jobs = []
-    for s in LINKEDIN_SEARCHES:
+    external_searches = [
+        {
+            "keywords": "Frontend Angular React Next.js React Native",
+            "location": location,
+        }
+        for location in sorted(ALLOWED_SEARCH_LOCATIONS)
+    ]
+    for s in external_searches:
         for search_fn in (search_wuzzuf, search_naukrigulf):
             for job in search_fn(s["keywords"], s["location"]):
                 job_id = job.get("job_id")

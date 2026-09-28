@@ -592,8 +592,7 @@ def parse_external_card(card, source: str, location: str) -> dict | None:
 
     link = title_tag.get("href", "")
     if link.startswith("/"):
-        base = "https://wuzzuf.net" if source == "WUZZUF" else "https://www.indeed.com"
-        link = base + link
+        link = "https://wuzzuf.net" + link
     if not link:
         return None
 
@@ -631,24 +630,6 @@ def search_wuzzuf(keywords: str, location: str) -> list:
         except requests.RequestException as exc:
             print(f"Warning: WUZZUF search failed for '{keywords}' / {work_mode}: {exc}")
     return jobs
-
-
-def search_indeed(keywords: str, location: str) -> list:
-    country_domains = {
-        "Egypt": "eg", "United Arab Emirates": "ae", "Saudi Arabia": "sa",
-        "Qatar": "qa", "Kuwait": "kw", "Bahrain": "bh", "Oman": "om",
-    }
-    domain = country_domains.get(location, "www")
-    url = f"https://{domain}.indeed.com/jobs?q={quote_plus(keywords)}&l={quote_plus(location)}&fromage=1"
-    try:
-        response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=15)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        cards = soup.select("div.job_seen_beacon, div[data-jk], .jobsearch-SerpJobCard")
-        return [job for card in cards if (job := parse_external_card(card, "Indeed", location))]
-    except requests.RequestException as exc:
-        print(f"Warning: Indeed search failed for '{keywords}' / {location}: {exc}")
-        return []
 
 
 # ── تليجرام ───────────────────────────────────────────────────────────────────
@@ -793,26 +774,25 @@ def main():
 
     external_jobs = []
     for s in LINKEDIN_SEARCHES:
-        for search_fn in (search_wuzzuf, search_indeed):
-            for job in search_fn(s["keywords"], s["location"]):
-                job_id = job.get("job_id")
-                if not job_id or job_id in seen or job_id in this_run_ids:
-                    continue
-                if not is_frontend_role(job.get("job_title", "")) or not is_remote_job(job):
-                    continue
-                this_run_ids.add(job_id)
-                external_jobs.append(job)
+        for job in search_wuzzuf(s["keywords"], s["location"]):
+            job_id = job.get("job_id")
+            if not job_id or job_id in seen or job_id in this_run_ids:
+                continue
+            if not is_frontend_role(job.get("job_title", "")) or not is_remote_job(job):
+                continue
+            this_run_ids.add(job_id)
+            external_jobs.append(job)
 
     all_new = general_jobs + external_jobs
     print(
         f"Relevant new jobs: {len(all_new)} "
-        f"(LinkedIn: {len(general_jobs)}, external: {len(external_jobs)})"
+        f"(LinkedIn: {len(general_jobs)}, WUZZUF: {len(external_jobs)})"
     )
 
     if not all_new:
         sent = send_telegram(
             "<b>Daily Job Report - " + datetime.now().strftime("%b %d, %Y") + "</b>\n"
-            "No new jobs from LinkedIn, WUZZUF, or Indeed since last run. Check back tomorrow!"
+            "No new jobs from LinkedIn or WUZZUF since last run. Check back tomorrow!"
         )
         if not sent:
             raise RuntimeError("Telegram message could not be sent; jobs were not marked as seen")
@@ -825,7 +805,7 @@ def main():
         date_str = datetime.now().strftime("%b %d, %Y")
         lines = [
             f"<b>Frontend Job Report - {date_str}</b>\n"
-            "Remote or Hybrid | Frontend / Angular / React | LinkedIn + WUZZUF + Indeed\n"
+            "Remote or Hybrid | Frontend / Angular / React | LinkedIn + WUZZUF\n"
         ]
 
         if top_general:

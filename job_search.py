@@ -2,8 +2,10 @@ import os
 import re
 import sys
 import json
+import hashlib
 import time
 import requests
+from urllib.parse import quote_plus
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
@@ -503,8 +505,7 @@ def parse_card(card, search_location: str) -> dict | None:
     company  = (company_tag.get_text(strip=True) if company_tag else "").strip()
     location = (loc_tag.get_text(strip=True)     if loc_tag     else search_location).strip()
 
-    # LinkedIn search تستخدم f_WT=2 للوظائف Remote.
-    # نحتفظ بها True، لكن نرفض النتائج التي يظهر فيها Hybrid / On-site.
+    # The query requests Remote + Hybrid; reject explicit on-site results below.
     is_remote = True
 
     job = {
@@ -539,11 +540,11 @@ def search_linkedin(keywords: str, location: str, remote_only: bool = False) -> 
         "keywords": keywords,
         "f_TPR":    "r86400",  # last 24h
         "start":    0,
-        "f_WT":     "2",  # remote-work-type only — every search is remote-only now
+        "f_WT":     "2,3",  # 2 = Remote, 3 = Hybrid
     }
     if remote_only:
-        # من غير فلتر بلد — بيدوّر في كل الدول بدل قايمة
-        # الخليج/مصر/أوروبا المحدودة.
+        # This branch is retained for compatibility, but it is not used by the
+        # configured searches because Worldwide searches are filtered out.
         params["location"] = ""
     else:
         params["location"] = location
@@ -561,6 +562,76 @@ def search_linkedin(keywords: str, location: str, remote_only: bool = False) -> 
         return jobs
     except requests.RequestException as e:
         print(f"Warning: LinkedIn search failed for '{keywords}': {e}")
+        return []
+
+
+EXTERNAL_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/125 Safari/537.36",
+}
+
+
+def parse_external_card(card, source: str, location: str) -> dict | None:
+    title_tag = card.select_one("h2 a, h2, h3 a, h3, .jobTitle a")
+    company_tag = card.select_one(".companyName, [data-testid='company-name'], .employer")
+    location_tag = card.select_one(".companyLocation, [data-testid='text-location'], .location")
+    if not title_tag:
+        return None
+
+    title = title_tag.get_text(" ", strip=True)
+    company = company_tag.get_text(" ", strip=True) if company_tag else "Unknown"
+    listed_location = location_tag.get_text(" ", strip=True) if location_tag else location
+    combined = f"{title} {listed_location} {card.get_text(' ', strip=True)}".lower()
+    if "on-site" in combined or "onsite" in combined or "on site" in combined:
+        return None
+    if "remote" not in combined and "hybrid" not in combined:
+        return None
+
+    link = title_tag.get("href", "")
+    if link.startswith("/"):
+        base = "https://wuzzuf.net" if source == "WUZZUF" else "https://www.indeed.com"
+        link = base + link
+    if not link:
+        return None
+
+    stable_id = hashlib.sha1(link.encode("utf-8")).hexdigest()[:20]
+    job_id = f"{source.lower()}_{stable_id}"
+    return {
+        "job_id": job_id,
+        "job_title": title,
+        "employer_name": company,
+        "job_city": listed_location,
+        "job_country": location,
+        "job_is_remote": "remote" in combined or "hybrid" in combined,
+        "job_apply_link": link,
+        "_source": source,
+    }
+
+
+def search_wuzzuf(keywords: str, location: str) -> list:
+    if location != "Egypt":
+        return []
+    url = f"https://wuzzuf.net/search/jobs/?a=hpb&q={quote_plus(keywords)}"
+    try:
+        response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=15)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        cards = soup.select("article, .css-1gatmva, [data-testid='job-card']")
+        return [job for card in cards if (job := parse_external_card(card, "WUZZUF", location))]
+    except requests.RequestException as exc:
+        print(f"Warning: WUZZUF search failed for '{keywords}': {exc}")
+        return []
+
+
+def search_indeed(keywords: str, location: str) -> list:
+    url = f"https://www.indeed.com/jobs?q={quote_plus(keywords)}&l={quote_plus(location)}&fromage=1"
+    try:
+        response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=15)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        cards = soup.select("div.job_seen_beacon, div[data-jk], .jobsearch-SerpJobCard")
+        return [job for card in cards if (job := parse_external_card(card, "Indeed", location))]
+    except requests.RequestException as exc:
+        print(f"Warning: Indeed search failed for '{keywords}' / {location}: {exc}")
         return []
 
 
@@ -589,7 +660,8 @@ def format_job(rank: int, job: dict) -> str:
 
     apply_url  = job.get("job_apply_link") or ""
     safe_url   = apply_url.replace("&", "&amp;")
-    apply_part = f' | <a href="{safe_url}">Apply on LinkedIn</a>' if safe_url else ""
+    source = job.get("_source", "LinkedIn")
+    apply_part = f' | <a href="{safe_url}">Apply on {esc(source)}</a>' if safe_url else ""
     badge      = " [TARGET CO.]" if is_target else ""
     if applicants is None:
         competition = ""
@@ -703,9 +775,24 @@ def main():
             kept += 1
         print(f"  '{s['keywords']}' / {s['location']} -> {kept} relevant")
 
-    print(f"Relevant remote frontend jobs: {len(general_jobs)}")
+    external_jobs = []
+    for s in LINKEDIN_SEARCHES:
+        for search_fn in (search_wuzzuf, search_indeed):
+            for job in search_fn(s["keywords"], s["location"]):
+                job_id = job.get("job_id")
+                if not job_id or job_id in seen or job_id in this_run_ids:
+                    continue
+                if not is_frontend_role(job.get("job_title", "")) or not is_remote_job(job):
+                    continue
+                this_run_ids.add(job_id)
+                external_jobs.append(job)
 
-    all_new = general_jobs
+    all_new = general_jobs + external_jobs
+    print(
+        f"Relevant new jobs: {len(all_new)} "
+        f"(LinkedIn: {len(general_jobs)}, external: {len(external_jobs)})"
+    )
+
     if not all_new:
         sent = send_telegram(
             "<b>Daily Job Report - " + datetime.now().strftime("%b %d, %Y") + "</b>\n"
@@ -717,7 +804,8 @@ def main():
         # بيجيب عدد المتقدمين لأعلى وظايف كل مجموعة (بونص المنافسة
         # القليلة)، بيعيد الترتيب، وبعدين بياخد أحسن ٥ من كل مجموعة.
         general_jobs = enrich_with_competition(general_jobs)
-        top_general = general_jobs[:TOP_N]
+        ranked_jobs = sorted(general_jobs + external_jobs, key=score_job, reverse=True)
+        top_general = ranked_jobs[:TOP_N]
         date_str = datetime.now().strftime("%b %d, %Y")
         lines = [
             f"<b>Frontend Job Report - {date_str}</b>\n"

@@ -491,7 +491,7 @@ def parse_card(card, search_location: str) -> dict | None:
         return None
     raw_url = link_tag.get("href", "")
     # بيسيب لينك لينكدإن نضيف (بيشيل باراميترز التتبّع اللي بعد ?)
-    apply_url = raw_url.split("?")[0] if raw_url else ""
+    apply_url = raw_url.split("?")[0].rstrip("/") if raw_url else ""
     match = re.search(r"-(\d{8,})$", apply_url)
     job_id = f"li_{match.group(1)}" if match else None
     if not job_id:
@@ -505,8 +505,12 @@ def parse_card(card, search_location: str) -> dict | None:
     company  = (company_tag.get_text(strip=True) if company_tag else "").strip()
     location = (loc_tag.get_text(strip=True)     if loc_tag     else search_location).strip()
 
-    # The query requests Remote + Hybrid; reject explicit on-site results below.
-    is_remote = True
+    card_text = card.get_text(" ", strip=True).lower()
+    if "on-site" in card_text or "onsite" in card_text or "on site" in card_text:
+        return None
+    if "remote" not in card_text and "hybrid" not in card_text:
+        return None
+    is_remote = "remote" in card_text or "hybrid" in card_text
 
     job = {
         "job_id":        job_id,
@@ -809,7 +813,7 @@ def main():
         date_str = datetime.now().strftime("%b %d, %Y")
         lines = [
             f"<b>Frontend Job Report - {date_str}</b>\n"
-            "Remote only | Angular + React + Frontend | LinkedIn only\n"
+            "Remote or Hybrid | Frontend / Angular / React | LinkedIn + WUZZUF + Indeed\n"
         ]
 
         if top_general:

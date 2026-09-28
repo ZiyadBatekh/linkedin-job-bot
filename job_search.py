@@ -592,7 +592,8 @@ def parse_external_card(card, source: str, location: str) -> dict | None:
 
     link = title_tag.get("href", "")
     if link.startswith("/"):
-        link = "https://wuzzuf.net" + link
+        base_url = "https://wuzzuf.net" if source == "WUZZUF" else "https://www.naukrigulf.com"
+        link = base_url + link
     if not link:
         return None
 
@@ -629,6 +630,35 @@ def search_wuzzuf(keywords: str, location: str) -> list:
                     jobs.append(job)
         except requests.RequestException as exc:
             print(f"Warning: WUZZUF search failed for '{keywords}' / {work_mode}: {exc}")
+    return jobs
+
+
+def search_naukrigulf(keywords: str, location: str) -> list:
+    location_slugs = {
+        "United Arab Emirates": "uae", "Saudi Arabia": "saudi-arabia",
+        "Qatar": "qatar", "Kuwait": "kuwait", "Bahrain": "bahrain",
+        "Oman": "oman",
+    }
+    location_slug = location_slugs.get(location)
+    if not location_slug:
+        return []
+
+    jobs, seen_links = [], set()
+    for work_mode in ("remote", "hybrid"):
+        slug = quote_plus(f"{keywords} {work_mode}").replace("+", "-")
+        url = f"https://www.naukrigulf.com/{slug}-jobs-in-{location_slug}"
+        try:
+            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=15)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+            cards = soup.select("article, .jobTuple, .srpTuple, [class*='jobTuple']")
+            for card in cards:
+                job = parse_external_card(card, "Naukrigulf", location)
+                if job and job["job_apply_link"] not in seen_links:
+                    seen_links.add(job["job_apply_link"])
+                    jobs.append(job)
+        except requests.RequestException as exc:
+            print(f"Warning: Naukrigulf search failed for '{keywords}' / {location}: {exc}")
     return jobs
 
 
@@ -774,25 +804,26 @@ def main():
 
     external_jobs = []
     for s in LINKEDIN_SEARCHES:
-        for job in search_wuzzuf(s["keywords"], s["location"]):
-            job_id = job.get("job_id")
-            if not job_id or job_id in seen or job_id in this_run_ids:
-                continue
-            if not is_frontend_role(job.get("job_title", "")) or not is_remote_job(job):
-                continue
-            this_run_ids.add(job_id)
-            external_jobs.append(job)
+        for search_fn in (search_wuzzuf, search_naukrigulf):
+            for job in search_fn(s["keywords"], s["location"]):
+                job_id = job.get("job_id")
+                if not job_id or job_id in seen or job_id in this_run_ids:
+                    continue
+                if not is_frontend_role(job.get("job_title", "")) or not is_remote_job(job):
+                    continue
+                this_run_ids.add(job_id)
+                external_jobs.append(job)
 
     all_new = general_jobs + external_jobs
     print(
         f"Relevant new jobs: {len(all_new)} "
-        f"(LinkedIn: {len(general_jobs)}, WUZZUF: {len(external_jobs)})"
+        f"(LinkedIn: {len(general_jobs)}, WUZZUF/Naukrigulf: {len(external_jobs)})"
     )
 
     if not all_new:
         sent = send_telegram(
             "<b>Daily Job Report - " + datetime.now().strftime("%b %d, %Y") + "</b>\n"
-            "No new jobs from LinkedIn or WUZZUF since last run. Check back tomorrow!"
+            "No new jobs from LinkedIn, WUZZUF, or Naukrigulf since last run. Check back tomorrow!"
         )
         if not sent:
             raise RuntimeError("Telegram message could not be sent; jobs were not marked as seen")
@@ -805,7 +836,7 @@ def main():
         date_str = datetime.now().strftime("%b %d, %Y")
         lines = [
             f"<b>Frontend Job Report - {date_str}</b>\n"
-            "Remote or Hybrid | Frontend / Angular / React | LinkedIn + WUZZUF\n"
+            "Remote or Hybrid | Frontend / Angular / React | LinkedIn + WUZZUF + Naukrigulf\n"
         ]
 
         if top_general:

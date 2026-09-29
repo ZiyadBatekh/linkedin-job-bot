@@ -673,7 +673,7 @@ def search_wuzzuf(keywords: str, location: str) -> list:
         slug = quote_plus(keywords).replace("+", "-")
         url = f"https://wuzzuf.net/a/{work_mode.title()}-{slug}-Jobs-in-{country_slug}"
         try:
-            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=8)
+            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=4)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
             cards = soup.select(
@@ -710,7 +710,7 @@ def search_naukrigulf(keywords: str, location: str) -> list:
         slug = quote_plus(keywords).replace("+", "-").lower()
         url = f"https://www.naukrigulf.com/{work_mode}-{slug}-jobs-in-{location_slug}"
         try:
-            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=8)
+            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=4)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
             cards = soup.select(
@@ -874,14 +874,19 @@ def main():
 
     external_jobs = []
     external_searches = [
-        {"keywords": keywords, "location": location}
+        {"keywords": "Frontend Developer", "location": location}
         for location in sorted(ALLOWED_SEARCH_LOCATIONS)
-        for keywords in SEARCH_KEYWORDS
     ]
     external_counts = {"WUZZUF": 0, "Naukrigulf": 0}
     external_raw_counts = {"WUZZUF": 0, "Naukrigulf": 0}
+    external_deadline = time.monotonic() + 90
     for s in external_searches:
+        if time.monotonic() >= external_deadline:
+            print("External search budget reached; continuing with collected results")
+            break
         for search_fn in (search_wuzzuf, search_naukrigulf):
+            if time.monotonic() >= external_deadline:
+                break
             try:
                 source_jobs = search_fn(s["keywords"], s["location"])
             except Exception as exc:

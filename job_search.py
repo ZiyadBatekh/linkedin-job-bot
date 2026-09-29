@@ -637,7 +637,7 @@ def is_external_job_recent(job: dict, days: int = 7) -> bool:
         return False
     if any(token in text for token in (
         "today", "just posted", "1 day ago", "1 day", "yesterday",
-        "few hours ago", "hours ago", "mins ago", "minutes ago",
+        "few hours ago", "hour ago", "hours ago", "min ago", "mins ago", "minute ago", "minutes ago",
     )):
         return True
 
@@ -667,29 +667,55 @@ def is_external_job_recent(job: dict, days: int = 7) -> bool:
 
 
 def search_wuzzuf(keywords: str, location: str) -> list:
+    """Read WUZZUF's public result cards; no account or API key is required."""
+    locations = {
+        "Egypt": ("https://wuzzuf.net", "Egypt"),
+        "Saudi Arabia": ("https://wuzzuf.net/saudi", "saudi-arabia"),
+    }
+    site_url, country_slug = locations.get(location, (None, None))
+    if not site_url:
+        return []
+
     jobs, seen_links = [], set()
-    country_slug = location.replace(" ", "-")
     for work_mode in ("remote", "hybrid"):
-        slug = quote_plus(keywords).replace("+", "-")
-        url = f"https://wuzzuf.net/a/{work_mode.title()}-{slug}-Jobs-in-{country_slug}"
+        url = f"{site_url}/a/{work_mode.title()}-Jobs-in-{country_slug}"
         try:
-            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=4)
+            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=6)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
-            cards = soup.select(
-                "article, [data-testid='job-card'], [class*='JobCard'], "
-                "[class*='job-card'], [class*='search-job-card']"
-            )
-            if not cards:
-                cards = [tag.find_parent(["article", "li"]) or tag.parent
-                         for tag in soup.select("h2 a, h3 a")]
-            for card in cards:
-                job = parse_external_card(card, "WUZZUF", location)
-                if job:
-                    job["_work_mode_filter"] = work_mode
-                if job and job["job_apply_link"] not in seen_links:
-                    seen_links.add(job["job_apply_link"])
-                    jobs.append(job)
+            # WUZZUF's job cards use stable job URLs, while their CSS classes change.
+            for title_tag in soup.select("a[href^='/jobs/p/']"):
+                link = "https://wuzzuf.net" + title_tag["href"].split("?")[0]
+                if link in seen_links:
+                    continue
+                card = title_tag.find_parent(
+                    "div", class_=lambda classes: classes and "e1v1l3u10" in classes
+                ) or title_tag.parent
+                card_text = card.get_text(" ", strip=True)
+                combined = card_text.lower()
+                if "on-site" in combined or "onsite" in combined or "on site" in combined:
+                    continue
+                company_tag = next(
+                    (tag for tag in card.select("a[href*='jobs/careers']")
+                     if tag.get_text(" ", strip=True)),
+                    None,
+                )
+                location_tag = card.select_one("span")
+                title = title_tag.get_text(" ", strip=True)
+                stable_id = hashlib.sha1(link.encode("utf-8")).hexdigest()[:20]
+                jobs.append({
+                    "job_id": f"wuzzuf_{stable_id}",
+                    "job_title": title,
+                    "employer_name": company_tag.get_text(" ", strip=True) if company_tag else "Unknown",
+                    "job_city": location_tag.get_text(" ", strip=True) if location_tag else location,
+                    "job_country": location,
+                    "job_is_remote": True,
+                    "job_apply_link": link,
+                    "_source": "WUZZUF",
+                    "_posted_text": card_text,
+                    "_work_mode_filter": work_mode,
+                })
+                seen_links.add(link)
         except requests.RequestException as exc:
             print(f"Warning: WUZZUF search failed for '{keywords}' / {work_mode}: {exc}")
     return jobs
@@ -710,7 +736,9 @@ def search_naukrigulf(keywords: str, location: str) -> list:
         slug = quote_plus(keywords).replace("+", "-").lower()
         url = f"https://www.naukrigulf.com/{work_mode}-{slug}-jobs-in-{location_slug}"
         try:
-            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=4)
+            # Naukrigulf often rate-limits automated requests. Keep this source from
+            # delaying the working LinkedIn and WUZZUF searches when that happens.
+            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=3)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
             cards = soup.select(

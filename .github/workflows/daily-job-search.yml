@@ -28,6 +28,8 @@ jobs:
       # بيجيب الكود من الريبو
       - name: Check out the repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # بيسطّب بايثون
       - name: Set up Python
@@ -56,5 +58,6 @@ jobs:
             echo "No seen-job database changes"
           else
             git commit -m "Update seen jobs database"
+            git pull --rebase origin main
             git push origin HEAD:main
           fi

@@ -310,6 +310,20 @@ def is_frontend_role(title: str) -> bool:
     return False
 
 
+def is_external_frontend_role(title: str) -> bool:
+    """Keep LinkedIn's existing filter intact while accepting relevant full-stack roles.
+
+    WUZZUF and Naukrigulf often put Angular or React after "Full Stack" in the
+    title, for example "Senior Full Stack Developer (.NET/Angular)".
+    """
+    title = (title or "").strip().lower()
+    if not title:
+        return False
+    if any(re.search(pattern, title, re.I) for pattern in EXCLUDED_ROLE_PATTERNS):
+        return False
+    return bool(re.search(r"\b(front[- ]?end|angular|react|next\.?js)\b", title, re.I))
+
+
 def is_remote_job(job: dict) -> bool:
     """
     LinkedIn search نفسها تستخدم f_WT=2 للـ Remote.
@@ -928,7 +942,7 @@ def main():
                     continue
                 if not is_external_job_recent(job):
                     continue
-                if not is_frontend_role(job.get("job_title", "")) or not is_remote_job(job):
+                if not is_external_frontend_role(job.get("job_title", "")) or not is_remote_job(job):
                     continue
                 this_run_ids.add(job_id)
                 external_jobs.append(job)

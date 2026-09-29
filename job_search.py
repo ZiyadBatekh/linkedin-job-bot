@@ -175,6 +175,7 @@ LINKEDIN_SEARCHES = [
     search for search in LINKEDIN_SEARCHES
     if search["location"] in ALLOWED_SEARCH_LOCATIONS
 ]
+SEARCH_KEYWORDS = tuple(dict.fromkeys(search["keywords"] for search in LINKEDIN_SEARCHES))
 
 # تم إيقاف Target Company Searches.
 # البوت يركز فقط على وظائف Frontend / Angular / React.
@@ -576,9 +577,18 @@ EXTERNAL_HEADERS = {
 
 
 def parse_external_card(card, source: str, location: str) -> dict | None:
-    title_tag = card.select_one("h2 a, h2, h3 a, h3, .jobTitle a")
-    company_tag = card.select_one(".companyName, [data-testid='company-name'], .employer")
-    location_tag = card.select_one(".companyLocation, [data-testid='text-location'], .location")
+    title_tag = card.select_one(
+        "h2 a, h3 a, h2, h3, .jobTitle a, a[href*='/job/'], "
+        "a[href*='/jobs/'], a[href*='/job-detail/']"
+    )
+    company_tag = card.select_one(
+        ".companyName, [data-testid='company-name'], .employer, "
+        "[class*='company'], [class*='employer']"
+    )
+    location_tag = card.select_one(
+        ".companyLocation, [data-testid='text-location'], .location, "
+        "[class*='location']"
+    )
     if not title_tag:
         return None
 
@@ -593,13 +603,19 @@ def parse_external_card(card, source: str, location: str) -> dict | None:
         return None
 
     link = title_tag.get("href", "")
+    if not link:
+        link = next(
+            (a.get("href", "") for a in card.select("a[href]")
+             if a.get_text(" ", strip=True) == title),
+            "",
+        )
     if link.startswith("/"):
         base_url = "https://wuzzuf.net" if source == "WUZZUF" else "https://www.naukrigulf.com"
         link = base_url + link
     if not link:
         return None
 
-    stable_id = hashlib.sha1(link.encode("utf-8")).hexdigest()[:20]
+    stable_id = hashlib.sha1(link.split("?")[0].rstrip("/").encode("utf-8")).hexdigest()[:20]
     job_id = f"{source.lower()}_{stable_id}"
     return {
         "job_id": job_id,
@@ -619,12 +635,19 @@ def is_external_job_recent(job: dict, days: int = 7) -> bool:
     text = (job.get("_posted_text") or "").lower()
     if not text:
         return False
-    if any(token in text for token in ("today", "just posted", "1 day ago", "1 day")):
+    if any(token in text for token in (
+        "today", "just posted", "1 day ago", "1 day", "yesterday",
+        "few hours ago", "hours ago", "mins ago", "minutes ago",
+    )):
         return True
 
     day_match = re.search(r"(\d+)\s*days?\s*ago", text)
     if day_match:
         return int(day_match.group(1)) <= days
+
+    week_match = re.search(r"(\d+)\s*weeks?\s*ago", text)
+    if week_match:
+        return int(week_match.group(1)) <= 1
 
     date_match = re.search(
         r"\b(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b",
@@ -647,16 +670,23 @@ def search_wuzzuf(keywords: str, location: str) -> list:
     jobs, seen_links = [], set()
     country_slug = location.replace(" ", "-")
     for work_mode in ("remote", "hybrid"):
-        slug = quote_plus(f"{keywords} {work_mode}").replace("+", "-")
-        url = f"https://wuzzuf.net/a/{slug}-Jobs-in-{country_slug}"
+        slug = quote_plus(keywords).replace("+", "-")
+        url = f"https://wuzzuf.net/a/{work_mode.title()}-{slug}-Jobs-in-{country_slug}"
         try:
             response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=8)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
-            cards = soup.select("article, [data-testid='job-card'], h2")
-            cards = [card.find_parent("article") or card for card in cards]
+            cards = soup.select(
+                "article, [data-testid='job-card'], [class*='JobCard'], "
+                "[class*='job-card'], [class*='search-job-card']"
+            )
+            if not cards:
+                cards = [tag.find_parent(["article", "li"]) or tag.parent
+                         for tag in soup.select("h2 a, h3 a")]
             for card in cards:
                 job = parse_external_card(card, "WUZZUF", location)
+                if job:
+                    job["_work_mode_filter"] = work_mode
                 if job and job["job_apply_link"] not in seen_links:
                     seen_links.add(job["job_apply_link"])
                     jobs.append(job)
@@ -677,15 +707,23 @@ def search_naukrigulf(keywords: str, location: str) -> list:
 
     jobs, seen_links = [], set()
     for work_mode in ("remote", "hybrid"):
-        slug = quote_plus(f"{keywords} {work_mode}").replace("+", "-")
-        url = f"https://www.naukrigulf.com/{slug}-jobs-in-{location_slug}"
+        slug = quote_plus(keywords).replace("+", "-").lower()
+        url = f"https://www.naukrigulf.com/{work_mode}-{slug}-jobs-in-{location_slug}"
         try:
             response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=8)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
-            cards = soup.select("article, .jobTuple, .srpTuple, [class*='jobTuple']")
+            cards = soup.select(
+                "article, .jobTuple, .srpTuple, [class*='jobTuple'], "
+                "[class*='job-card'], [data-job-id]"
+            )
+            if not cards:
+                cards = [tag.find_parent(["article", "li"]) or tag.parent
+                         for tag in soup.select("h2 a, h3 a")]
             for card in cards:
                 job = parse_external_card(card, "Naukrigulf", location)
+                if job:
+                    job["_work_mode_filter"] = work_mode
                 if job and job["job_apply_link"] not in seen_links:
                     seen_links.add(job["job_apply_link"])
                     jobs.append(job)
@@ -836,12 +874,12 @@ def main():
 
     external_jobs = []
     external_searches = [
-        {
-            "keywords": "Frontend Angular React Next.js React Native",
-            "location": location,
-        }
+        {"keywords": keywords, "location": location}
         for location in sorted(ALLOWED_SEARCH_LOCATIONS)
+        for keywords in SEARCH_KEYWORDS
     ]
+    external_counts = {"WUZZUF": 0, "Naukrigulf": 0}
+    external_raw_counts = {"WUZZUF": 0, "Naukrigulf": 0}
     for s in external_searches:
         for search_fn in (search_wuzzuf, search_naukrigulf):
             try:
@@ -849,6 +887,8 @@ def main():
             except Exception as exc:
                 print(f"Warning: {search_fn.__name__} failed: {exc}")
                 source_jobs = []
+            source_name = "WUZZUF" if search_fn is search_wuzzuf else "Naukrigulf"
+            external_raw_counts[source_name] += len(source_jobs)
             for job in source_jobs:
                 job_id = job.get("job_id")
                 if not job_id or job_id in seen or job_id in this_run_ids:
@@ -859,6 +899,13 @@ def main():
                     continue
                 this_run_ids.add(job_id)
                 external_jobs.append(job)
+                external_counts[job.get("_source", "WUZZUF")] += 1
+
+    print(
+        "External source results (raw / accepted): "
+        f"WUZZUF={external_raw_counts['WUZZUF']}/{external_counts['WUZZUF']}, "
+        f"Naukrigulf={external_raw_counts['Naukrigulf']}/{external_counts['Naukrigulf']}"
+    )
 
     all_new = general_jobs + external_jobs
     print(

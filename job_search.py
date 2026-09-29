@@ -508,9 +508,10 @@ def parse_card(card, search_location: str) -> dict | None:
     card_text = card.get_text(" ", strip=True).lower()
     if "on-site" in card_text or "onsite" in card_text or "on site" in card_text:
         return None
-    if "remote" not in card_text and "hybrid" not in card_text:
-        return None
-    is_remote = "remote" in card_text or "hybrid" in card_text
+    # LinkedIn's guest search already applies f_WT=2. Its result cards often do
+    # not include the words Remote/Hybrid, so requiring those words here drops
+    # valid results before they can reach Telegram.
+    is_remote = True
 
     job = {
         "job_id":        job_id,
@@ -544,7 +545,7 @@ def search_linkedin(keywords: str, location: str, remote_only: bool = False) -> 
         "keywords": keywords,
         "f_TPR":    "r86400",  # last 24h
         "start":    0,
-        "f_WT":     "2,3",  # 2 = Remote, 3 = Hybrid
+        "f_WT":     "2",  # LinkedIn remote-only search; external sources add Hybrid
     }
     if remote_only:
         # This branch is retained for compatibility, but it is not used by the
@@ -812,7 +813,12 @@ def main():
     ]
     for s in external_searches:
         for search_fn in (search_wuzzuf, search_naukrigulf):
-            for job in search_fn(s["keywords"], s["location"]):
+            try:
+                source_jobs = search_fn(s["keywords"], s["location"])
+            except Exception as exc:
+                print(f"Warning: {search_fn.__name__} failed: {exc}")
+                source_jobs = []
+            for job in source_jobs:
                 job_id = job.get("job_id")
                 if not job_id or job_id in seen or job_id in this_run_ids:
                     continue

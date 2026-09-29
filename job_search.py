@@ -5,7 +5,6 @@ import json
 import hashlib
 import time
 import requests
-from urllib.parse import quote_plus
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
@@ -16,7 +15,7 @@ TELEGRAM_TOKEN  = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 SEEN_JOBS_FILE    = os.path.join(os.path.dirname(__file__), "seen_jobs.json")
-SEEN_JOBS_TTL_DAYS = 7
+SEEN_JOBS_TTL_DAYS = 90
 TOP_N = 10
 
 # كل عمليات البحث ريموت بس (f_WT=2، متفرضة في search_linkedin)، ومحصورة
@@ -313,7 +312,7 @@ def is_frontend_role(title: str) -> bool:
 def is_external_frontend_role(title: str) -> bool:
     """Keep LinkedIn's existing filter intact while accepting relevant full-stack roles.
 
-    WUZZUF and Naukrigulf often put Angular or React after "Full Stack" in the
+    WUZZUF often puts Angular or React after "Full Stack" in the
     title, for example "Senior Full Stack Developer (.NET/Angular)".
     """
     title = (title or "").strip().lower()
@@ -590,60 +589,6 @@ EXTERNAL_HEADERS = {
 }
 
 
-def parse_external_card(card, source: str, location: str) -> dict | None:
-    title_tag = card.select_one(
-        "h2 a, h3 a, h2, h3, .jobTitle a, a[href*='/job/'], "
-        "a[href*='/jobs/'], a[href*='/job-detail/']"
-    )
-    company_tag = card.select_one(
-        ".companyName, [data-testid='company-name'], .employer, "
-        "[class*='company'], [class*='employer']"
-    )
-    location_tag = card.select_one(
-        ".companyLocation, [data-testid='text-location'], .location, "
-        "[class*='location']"
-    )
-    if not title_tag:
-        return None
-
-    title = title_tag.get_text(" ", strip=True)
-    company = company_tag.get_text(" ", strip=True) if company_tag else "Unknown"
-    listed_location = location_tag.get_text(" ", strip=True) if location_tag else location
-    card_text = card.get_text(" ", strip=True)
-    combined = f"{title} {listed_location} {card_text}".lower()
-    if "on-site" in combined or "onsite" in combined or "on site" in combined:
-        return None
-    if "remote" not in combined and "hybrid" not in combined:
-        return None
-
-    link = title_tag.get("href", "")
-    if not link:
-        link = next(
-            (a.get("href", "") for a in card.select("a[href]")
-             if a.get_text(" ", strip=True) == title),
-            "",
-        )
-    if link.startswith("/"):
-        base_url = "https://wuzzuf.net" if source == "WUZZUF" else "https://www.naukrigulf.com"
-        link = base_url + link
-    if not link:
-        return None
-
-    stable_id = hashlib.sha1(link.split("?")[0].rstrip("/").encode("utf-8")).hexdigest()[:20]
-    job_id = f"{source.lower()}_{stable_id}"
-    return {
-        "job_id": job_id,
-        "job_title": title,
-        "employer_name": company,
-        "job_city": listed_location,
-        "job_country": location,
-        "job_is_remote": "remote" in combined or "hybrid" in combined,
-        "job_apply_link": link,
-        "_source": source,
-        "_posted_text": card_text,
-    }
-
-
 def is_external_job_recent(job: dict, days: int = 7) -> bool:
     """Accept only external listings whose card says they were posted recently."""
     text = (job.get("_posted_text") or "").lower()
@@ -735,45 +680,6 @@ def search_wuzzuf(keywords: str, location: str) -> list:
     return jobs
 
 
-def search_naukrigulf(keywords: str, location: str) -> list:
-    location_slugs = {
-        "United Arab Emirates": "uae", "Saudi Arabia": "saudi-arabia",
-        "Qatar": "qatar", "Kuwait": "kuwait", "Bahrain": "bahrain",
-        "Oman": "oman",
-    }
-    location_slug = location_slugs.get(location)
-    if not location_slug:
-        return []
-
-    jobs, seen_links = [], set()
-    for work_mode in ("remote", "hybrid"):
-        slug = quote_plus(keywords).replace("+", "-").lower()
-        url = f"https://www.naukrigulf.com/{work_mode}-{slug}-jobs-in-{location_slug}"
-        try:
-            # Naukrigulf often rate-limits automated requests. Keep this source from
-            # delaying the working LinkedIn and WUZZUF searches when that happens.
-            response = requests.get(url, headers=EXTERNAL_HEADERS, timeout=3)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, "html.parser")
-            cards = soup.select(
-                "article, .jobTuple, .srpTuple, [class*='jobTuple'], "
-                "[class*='job-card'], [data-job-id]"
-            )
-            if not cards:
-                cards = [tag.find_parent(["article", "li"]) or tag.parent
-                         for tag in soup.select("h2 a, h3 a")]
-            for card in cards:
-                job = parse_external_card(card, "Naukrigulf", location)
-                if job:
-                    job["_work_mode_filter"] = work_mode
-                if job and job["job_apply_link"] not in seen_links:
-                    seen_links.add(job["job_apply_link"])
-                    jobs.append(job)
-        except requests.RequestException as exc:
-            print(f"Warning: Naukrigulf search failed for '{keywords}' / {location}: {exc}")
-    return jobs
-
-
 # ── تليجرام ───────────────────────────────────────────────────────────────────
 
 def esc(text: str) -> str:
@@ -858,15 +764,21 @@ def check_config():
 def load_seen_jobs() -> dict:
     if not os.path.exists(SEEN_JOBS_FILE):
         return {}
-    with open(SEEN_JOBS_FILE, "r") as f:
-        data = json.load(f)
+    try:
+        with open(SEEN_JOBS_FILE, "r") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        print("Warning: Could not read sent-job memory; preserving the existing file")
+        return {}
     cutoff = (datetime.now() - timedelta(days=SEEN_JOBS_TTL_DAYS)).isoformat()
     return {jid: ts for jid, ts in data.items() if ts >= cutoff}
 
 
 def save_seen_jobs(seen: dict):
-    with open(SEEN_JOBS_FILE, "w") as f:
+    temp_file = SEEN_JOBS_FILE + ".tmp"
+    with open(temp_file, "w") as f:
         json.dump(seen, f)
+    os.replace(temp_file, SEEN_JOBS_FILE)
 
 
 # ── الدالة الرئيسية ───────────────────────────────────────────────────────────
@@ -919,51 +831,46 @@ def main():
         {"keywords": "Frontend Developer", "location": location}
         for location in sorted(ALLOWED_SEARCH_LOCATIONS)
     ]
-    external_counts = {"WUZZUF": 0, "Naukrigulf": 0}
-    external_raw_counts = {"WUZZUF": 0, "Naukrigulf": 0}
-    external_deadline = time.monotonic() + 90
+    external_counts = {"WUZZUF": 0}
+    external_raw_counts = {"WUZZUF": 0}
+    external_deadline = time.monotonic() + 30
     for s in external_searches:
         if time.monotonic() >= external_deadline:
             print("External search budget reached; continuing with collected results")
             break
-        for search_fn in (search_wuzzuf, search_naukrigulf):
-            if time.monotonic() >= external_deadline:
-                break
-            try:
-                source_jobs = search_fn(s["keywords"], s["location"])
-            except Exception as exc:
-                print(f"Warning: {search_fn.__name__} failed: {exc}")
-                source_jobs = []
-            source_name = "WUZZUF" if search_fn is search_wuzzuf else "Naukrigulf"
-            external_raw_counts[source_name] += len(source_jobs)
-            for job in source_jobs:
-                job_id = job.get("job_id")
-                if not job_id or job_id in seen or job_id in this_run_ids:
-                    continue
-                if not is_external_job_recent(job):
-                    continue
-                if not is_external_frontend_role(job.get("job_title", "")) or not is_remote_job(job):
-                    continue
-                this_run_ids.add(job_id)
-                external_jobs.append(job)
-                external_counts[job.get("_source", "WUZZUF")] += 1
+        try:
+            source_jobs = search_wuzzuf(s["keywords"], s["location"])
+        except Exception as exc:
+            print(f"Warning: WUZZUF search failed: {exc}")
+            source_jobs = []
+        external_raw_counts["WUZZUF"] += len(source_jobs)
+        for job in source_jobs:
+            job_id = job.get("job_id")
+            if not job_id or job_id in seen or job_id in this_run_ids:
+                continue
+            if not is_external_job_recent(job):
+                continue
+            if not is_external_frontend_role(job.get("job_title", "")) or not is_remote_job(job):
+                continue
+            this_run_ids.add(job_id)
+            external_jobs.append(job)
+            external_counts["WUZZUF"] += 1
 
     print(
-        "External source results (raw / accepted): "
-        f"WUZZUF={external_raw_counts['WUZZUF']}/{external_counts['WUZZUF']}, "
-        f"Naukrigulf={external_raw_counts['Naukrigulf']}/{external_counts['Naukrigulf']}"
+        "WUZZUF results (raw / accepted): "
+        f"{external_raw_counts['WUZZUF']}/{external_counts['WUZZUF']}"
     )
 
     all_new = general_jobs + external_jobs
     print(
         f"Relevant new jobs: {len(all_new)} "
-        f"(LinkedIn: {len(general_jobs)}, WUZZUF/Naukrigulf: {len(external_jobs)})"
+        f"(LinkedIn: {len(general_jobs)}, WUZZUF: {len(external_jobs)})"
     )
 
     if not all_new:
         sent = send_telegram(
             "<b>Daily Job Report - " + datetime.now().strftime("%b %d, %Y") + "</b>\n"
-            "No new jobs from LinkedIn, WUZZUF, or Naukrigulf since last run. Check back tomorrow!"
+            "No new jobs from LinkedIn or WUZZUF since last run. Check back tomorrow!"
         )
         if not sent:
             raise RuntimeError("Telegram message could not be sent; jobs were not marked as seen")
@@ -976,7 +883,7 @@ def main():
         date_str = datetime.now().strftime("%b %d, %Y")
         lines = [
             f"<b>Frontend Job Report - {date_str}</b>\n"
-            "Remote or Hybrid | Frontend / Angular / React | LinkedIn + WUZZUF + Naukrigulf\n"
+            "Remote or Hybrid | Frontend / Angular / React | LinkedIn + WUZZUF\n"
         ]
 
         if top_general:

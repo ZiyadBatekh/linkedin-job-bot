@@ -585,7 +585,8 @@ def parse_external_card(card, source: str, location: str) -> dict | None:
     title = title_tag.get_text(" ", strip=True)
     company = company_tag.get_text(" ", strip=True) if company_tag else "Unknown"
     listed_location = location_tag.get_text(" ", strip=True) if location_tag else location
-    combined = f"{title} {listed_location} {card.get_text(' ', strip=True)}".lower()
+    card_text = card.get_text(" ", strip=True)
+    combined = f"{title} {listed_location} {card_text}".lower()
     if "on-site" in combined or "onsite" in combined or "on site" in combined:
         return None
     if "remote" not in combined and "hybrid" not in combined:
@@ -609,7 +610,37 @@ def parse_external_card(card, source: str, location: str) -> dict | None:
         "job_is_remote": "remote" in combined or "hybrid" in combined,
         "job_apply_link": link,
         "_source": source,
+        "_posted_text": card_text,
     }
+
+
+def is_external_job_recent(job: dict, days: int = 7) -> bool:
+    """Accept only external listings whose card says they were posted recently."""
+    text = (job.get("_posted_text") or "").lower()
+    if not text:
+        return False
+    if any(token in text for token in ("today", "just posted", "1 day ago", "1 day")):
+        return True
+
+    day_match = re.search(r"(\d+)\s*days?\s*ago", text)
+    if day_match:
+        return int(day_match.group(1)) <= days
+
+    date_match = re.search(
+        r"\b(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b",
+        text,
+    )
+    if date_match:
+        months = {
+            "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+            "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+        }
+        posted = datetime(datetime.now().year, months[date_match.group(2)], int(date_match.group(1)))
+        if posted > datetime.now():
+            posted = posted.replace(year=posted.year - 1)
+        return datetime.now() - posted <= timedelta(days=days)
+
+    return False
 
 
 def search_wuzzuf(keywords: str, location: str) -> list:
@@ -821,6 +852,8 @@ def main():
             for job in source_jobs:
                 job_id = job.get("job_id")
                 if not job_id or job_id in seen or job_id in this_run_ids:
+                    continue
+                if not is_external_job_recent(job):
                     continue
                 if not is_frontend_role(job.get("job_title", "")) or not is_remote_job(job):
                     continue
